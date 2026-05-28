@@ -11,12 +11,13 @@ from hgnc_xref_loader.exceptions import ServiceError
 
 class TestCLIStructuredLoggingOnSuccess:
     def test_cli_emits_structured_log_on_success(self, capsys):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging"), \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             mock_svc = MagicMock()
-            mock_svc_cls.from_settings.return_value = mock_svc
+            mock_svc_cls.return_value = mock_svc
             main([])
         captured = capsys.readouterr()
         if captured.out.strip():
@@ -27,13 +28,14 @@ class TestCLIStructuredLoggingOnSuccess:
 
 class TestCLIStructuredLoggingOnError:
     def test_cli_returns_3_on_service_error(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging"), \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             mock_svc = MagicMock()
             mock_svc.run.side_effect = ServiceError("load failed")
-            mock_svc_cls.from_settings.return_value = mock_svc
+            mock_svc_cls.return_value = mock_svc
             result = main([])
         assert result == 3
 
@@ -44,13 +46,14 @@ class TestCLIStructuredLoggingOnError:
         assert result == 2
 
     def test_cli_returns_1_on_unexpected_error(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging"), \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             mock_svc = MagicMock()
             mock_svc.run.side_effect = RuntimeError("unexpected")
-            mock_svc_cls.from_settings.return_value = mock_svc
+            mock_svc_cls.return_value = mock_svc
             result = main([])
         assert result == 1
 

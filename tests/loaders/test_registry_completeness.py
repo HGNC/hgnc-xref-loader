@@ -15,7 +15,7 @@ class TestRegistryCompleteness:
     """Verify all XrefSource values have registered loaders."""
 
     def test_all_sources_registered(self) -> None:
-        import hgnc_xref_loader.loaders.scaffold_loaders
+        import hgnc_xref_loader.loaders.individual_loaders
         import hgnc_xref_loader.loaders.uniprot_loader
         import hgnc_xref_loader.loaders.ccds_loader
         import hgnc_xref_loader.loaders.ensembl_loader

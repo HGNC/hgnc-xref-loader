@@ -10,50 +10,56 @@ from hgnc_xref_loader.exceptions import ConfigError, ServiceError
 
 class TestMainSuccess:
     def test_main_returns_zero_on_success(self):
-        with patch("hgnc_xref_loader.cli.configure_logging") as mock_log, \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
+        with patch("hgnc_xref_loader.cli.configure_logging"), \
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             mock_svc = MagicMock()
-            mock_svc_cls.from_settings.return_value = mock_svc
+            mock_svc_cls.return_value = mock_svc
             result = main([])
         assert result == 0
 
     def test_main_calls_configure_logging(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging") as mock_log, \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
-            mock_svc_cls.from_settings.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService"):
             main([])
         mock_log.assert_called_once()
 
     def test_main_loads_settings(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging"), \
              patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService"):
-            mock_settings_cls.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.XrefLoadService"):
+            mock_settings_cls.return_value = mock_settings
             main([])
         mock_settings_cls.assert_called_once()
 
-    def test_main_creates_service_from_settings(self):
+    def test_main_creates_service_and_runs(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging"), \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings = MagicMock()
-            mock_settings_cls.return_value = mock_settings
-            main([])
-        mock_svc_cls.from_settings.assert_called_once_with(mock_settings)
-
-    def test_main_calls_service_run(self):
-        with patch("hgnc_xref_loader.cli.configure_logging"), \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             mock_svc = MagicMock()
-            mock_svc_cls.from_settings.return_value = mock_svc
+            mock_svc_cls.return_value = mock_svc
             main([])
+        mock_svc_cls.assert_called_once()
         mock_svc.run.assert_called_once()
+
+    def test_main_resolves_source_from_settings(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "ccds"
+        with patch("hgnc_xref_loader.cli.configure_logging"), \
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
+            main([])
+        call_kwargs = mock_svc_cls.call_args
+        assert call_kwargs[1]["source"].value == "ccds"
 
 
 class TestMainConfigError:
@@ -72,26 +78,28 @@ class TestMainConfigError:
 
 class TestMainServiceError:
     def test_service_error_returns_exit_code_3(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging"), \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             mock_svc = MagicMock()
             mock_svc.run.side_effect = ServiceError("domain failure")
-            mock_svc_cls.from_settings.return_value = mock_svc
+            mock_svc_cls.return_value = mock_svc
             result = main([])
         assert result == 3
 
 
 class TestMainUnexpectedError:
     def test_unexpected_error_returns_exit_code_1(self):
+        mock_settings = MagicMock()
+        mock_settings.runtime.xref_source = "uniprot"
         with patch("hgnc_xref_loader.cli.configure_logging"), \
-             patch("hgnc_xref_loader.cli.Settings") as mock_settings_cls, \
-             patch("hgnc_xref_loader.cli.MainService") as mock_svc_cls:
-            mock_settings_cls.return_value = MagicMock()
+             patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             mock_svc = MagicMock()
             mock_svc.run.side_effect = RuntimeError("boom")
-            mock_svc_cls.from_settings.return_value = mock_svc
+            mock_svc_cls.return_value = mock_svc
             result = main([])
         assert result == 1
 
