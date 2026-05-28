@@ -171,3 +171,81 @@ class TestEnsembl2HgncCleanupSql:
         assert "e2h_hgnc_id" in cleanup_sql
         assert "e2h_ensembl_gene_id" in cleanup_sql
         assert "DELETE" in cleanup_sql
+
+    def test_cleanup_sql_uses_self_join_pattern(self) -> None:
+        from hgnc_xref_loader.services.ensembl2hgnc_load_service import (
+            Ensembl2HgncLoadService,
+        )
+
+        service = Ensembl2HgncLoadService(
+            ensembl_repo=MagicMock(),
+            staging_repo=MagicMock(),
+            version_tracker=MagicMock(),
+            ensembl_version="112",
+        )
+        sql_text = service.get_cleanup_sql()
+
+        assert sql_text.count("ensembl2hgnc_update") == 3
+        assert "a.e2h_hgnc_id = b.e2h_hgnc_id" in sql_text
+        assert "a.e2h_ensembl_gene_id != b.e2h_ensembl_gene_id" in sql_text
+
+
+class TestEnsembl2HgncErrorHandling:
+    """Test error cases in the load service."""
+
+    def test_run_returns_failure_on_fetch_error(
+        self,
+        mock_staging_repo: MagicMock,
+        mock_version_tracker: MagicMock,
+    ) -> None:
+        mock_ensembl_repo = MagicMock()
+        mock_ensembl_repo.fetch_mappings.side_effect = RuntimeError("MySQL down")
+
+        service = Ensembl2HgncLoadService(
+            ensembl_repo=mock_ensembl_repo,
+            staging_repo=mock_staging_repo,
+            version_tracker=mock_version_tracker,
+            ensembl_version="112",
+        )
+        result = service.run()
+
+        assert result.success is False
+        assert "MySQL down" in result.error
+
+    def test_run_does_not_record_version_on_error(
+        self,
+        mock_staging_repo: MagicMock,
+        mock_version_tracker: MagicMock,
+    ) -> None:
+        mock_ensembl_repo = MagicMock()
+        mock_ensembl_repo.fetch_mappings.side_effect = RuntimeError("fail")
+
+        service = Ensembl2HgncLoadService(
+            ensembl_repo=mock_ensembl_repo,
+            staging_repo=mock_staging_repo,
+            version_tracker=mock_version_tracker,
+            ensembl_version="112",
+        )
+        service.run()
+
+        mock_version_tracker.record_version.assert_not_called()
+
+    def test_run_handles_empty_result_set(
+        self,
+        mock_staging_repo: MagicMock,
+        mock_version_tracker: MagicMock,
+    ) -> None:
+        mock_ensembl_repo = MagicMock()
+        mock_ensembl_repo.fetch_mappings.return_value = []
+        mock_staging_repo.bulk_copy_into_staging.return_value = 0
+
+        service = Ensembl2HgncLoadService(
+            ensembl_repo=mock_ensembl_repo,
+            staging_repo=mock_staging_repo,
+            version_tracker=mock_version_tracker,
+            ensembl_version="112",
+        )
+        result = service.run()
+
+        assert result.success is True
+        assert result.rows_loaded == 0
