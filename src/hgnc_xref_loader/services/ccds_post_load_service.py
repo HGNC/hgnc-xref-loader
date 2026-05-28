@@ -39,6 +39,27 @@ class CcdsPostLoadRepository(Protocol):
         """Rebuild the HgncId2CcdsId junction table from Public CCDS records."""
         ...
 
+    def find_withdrawn_ccds_in_genes(self) -> list[dict[str, Any]]:
+        """Find withdrawn CCDS IDs still present in gene.ccds_ids.
+
+        Returns:
+            List of dicts with keys: hgnc_id, ccds_id, status.
+        """
+        ...
+
+    def remove_ccds_from_gene(
+        self, hgnc_id: int, ccds_id: str, status: str, lock_code: str
+    ) -> None:
+        """Remove a CCDS ID from gene.ccds_ids and append audit note to edit_memo.
+
+        Args:
+            hgnc_id: Gene HGNC ID.
+            ccds_id: CCDS ID to remove.
+            status: Withdrawal status for the audit note.
+            lock_code: Genew4Lock code for safe row updates.
+        """
+        ...
+
 
 class CcdsPostLoadService:
     """Post-load service for CCDS add_hgnc_ids routine.
@@ -76,5 +97,28 @@ class CcdsPostLoadService:
                 lock_code=self._lock.lock_code
             )
             self._post_load_repo.rebuild_hgnc_id2ccds_id()
+        finally:
+            self._lock.unlock_all()
+
+    def remove_withdrawn_ccds(self) -> None:
+        """Remove withdrawn CCDS IDs from gene.ccds_ids and audit via edit_memo.
+
+        Finds CCDS IDs with Withdrawn status that still appear in gene.ccds_ids,
+        removes them from the comma-separated string, and appends an audit note.
+        Unlocks unconditionally in a finally block.
+
+        Raises:
+            Exception: Propagates any database or lock errors after unlocking.
+        """
+        self._lock.lock_all()
+        try:
+            withdrawn = self._post_load_repo.find_withdrawn_ccds_in_genes()
+            for entry in withdrawn:
+                self._post_load_repo.remove_ccds_from_gene(
+                    hgnc_id=entry["hgnc_id"],
+                    ccds_id=entry["ccds_id"],
+                    status=entry["status"],
+                    lock_code=self._lock.lock_code,
+                )
         finally:
             self._lock.unlock_all()
