@@ -13,6 +13,14 @@ import pytest
 from hgnc_xref_loader.services.uniprot_load_service import (
     UniprotLoadService,
 )
+from hgnc_xref_loader.loaders.uniprot_parser import UniprotTsvParser
+from hgnc_xref_loader.loaders.uniprot_schemas import (
+    UNIPROT_HEADER_LINES,
+    UniprotHasEcSchema,
+    UniprotHasHgncSchema,
+    UniprotHasNcbiGeneSchema,
+    UniprotMainSchema,
+)
 
 
 @pytest.fixture
@@ -48,7 +56,7 @@ def mock_staging_repo() -> MagicMock:
 @pytest.fixture
 def mock_version_tracker() -> MagicMock:
     tracker = MagicMock()
-    tracker.is_current_version.return_value = False
+    tracker.should_skip.return_value = False
     tracker.record_version.return_value = None
     return tracker
 
@@ -99,7 +107,7 @@ class TestUniprotLoadServiceOrchestration:
         mock_staging_repo: MagicMock,
         mock_version_tracker: MagicMock,
     ) -> None:
-        mock_version_tracker.is_current_version.return_value = True
+        mock_version_tracker.should_skip.return_value = True
 
         service = UniprotLoadService(
             http_client=mock_http_client,
@@ -152,3 +160,68 @@ class TestUniprotLoadServiceOrchestration:
 
         assert result.success is False
         mock_version_tracker.record_version.assert_not_called()
+
+
+class TestUniprotE2EParsing:
+    """End-to-end parsing tests validating TSV -> staging row conversion."""
+
+    def _make_tsv(self, data_rows: list[str]) -> bytes:
+        header = (
+            "Entry\tStatus\tEntry Name\tProtein names\tGene Names (primary)\t"
+            "Cross-reference (HGNC)\tEC number\tCross-reference (GeneID)"
+        )
+        lines = ["comment"] * UNIPROT_HEADER_LINES + [header] + data_rows
+        return "\n".join(lines).encode("utf-8")
+
+    def test_e2e_multi_value_fields_populate_junction_tables(self) -> None:
+        tsv = self._make_tsv([
+            "P00750\treviewed\tUROT_HUMAN\tPlasminogen activator (EC 3.4.21)\tPLAU\t"
+            "HGNC:9052;HGNC:1234\t3.4.21.73;1.1.1.1\t99;100;101",
+        ])
+        parser = UniprotTsvParser()
+        batch = parser.parse(tsv)
+
+        assert batch.total_main == 1
+        assert batch.total_hgnc == 2
+        assert batch.total_ec == 2
+        assert batch.total_ncbi_gene == 3
+
+    def test_e2e_schema_columns_match_parser_output(self) -> None:
+        tsv = self._make_tsv([
+            "P00750\treviewed\tUROT_HUMAN\tTest protein\tPLAU\tHGNC:9052\t3.4.21.73\t99",
+        ])
+        parser = UniprotTsvParser()
+        batch = parser.parse(tsv)
+
+        main_dict = batch.main_rows[0].to_dict()
+        assert set(main_dict.keys()) == set(UniprotMainSchema.columns)
+
+        hgnc_dict = batch.hgnc_rows[0].to_dict()
+        assert set(hgnc_dict.keys()) == set(UniprotHasHgncSchema.columns)
+
+        ec_dict = batch.ec_rows[0].to_dict()
+        assert set(ec_dict.keys()) == set(UniprotHasEcSchema.columns)
+
+        ncbi_dict = batch.ncbi_gene_rows[0].to_dict()
+        assert set(ncbi_dict.keys()) == set(UniprotHasNcbiGeneSchema.columns)
+
+    def test_e2e_version_recording_after_promotion(
+        self,
+        mock_http_client: MagicMock,
+        mock_staging_repo: MagicMock,
+    ) -> None:
+        mock_version_tracker = MagicMock()
+        mock_version_tracker.should_skip.return_value = False
+
+        service = UniprotLoadService(
+            http_client=mock_http_client,
+            staging_repo=mock_staging_repo,
+            version_tracker=mock_version_tracker,
+        )
+        result = service.run()
+
+        assert result.success is True
+        assert result.version == "2024_03"
+        mock_version_tracker.record_version.assert_called_once_with(
+            "uniprot", "2024_03"
+        )

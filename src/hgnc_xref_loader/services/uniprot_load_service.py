@@ -78,7 +78,7 @@ class UniprotLoadService:
         try:
             version = self._http_client.fetch_version()
 
-            if self._version_tracker.is_current_version("uniprot", version):
+            if self._version_tracker.should_skip("uniprot", version):
                 logger.info(
                     "uniprot_skip",
                     extra={"event": "uniprot_skip", "version": version},
