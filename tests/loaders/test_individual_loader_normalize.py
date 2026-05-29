@@ -65,7 +65,7 @@ def test_ucsc2hgnc_normalize_uses_hgnc_and_transcript() -> None:
     records = loader.normalize(
         [
             {
-                "ucsc_hgnc_id": "HGNC:5",
+                "ucsc_hgnc_id": "5",
                 "ucsc_hgnc_ucsc_id": "uc001aaa.3",
                 "ucsc_hgnc_app_sym": "A1BG",
                 "ucsc_mapby": "M",
@@ -73,7 +73,7 @@ def test_ucsc2hgnc_normalize_uses_hgnc_and_transcript() -> None:
         ]
     )
     assert len(records) == 1
-    assert records[0].hgnc_id == "HGNC:5"
+    assert records[0].hgnc_id == "5"
     assert records[0].external_id == "uc001aaa.3"
     assert records[0].status == "M"
 

@@ -630,7 +630,55 @@ class Ensembl2HgncCompleteLoader(BaseXrefLoader):
         repository = Ensembl2HgncCompleteRepository(
             ensembl_session_factory=session_factory
         )
-        return repository.fetch_all_mappings()
+        rows = repository.fetch_all_mappings()
+        return self._remove_alt_loci_duplicates(rows)
+
+    @staticmethod
+    def _remove_alt_loci_duplicates(rows: list[dict]) -> list[dict]:
+        """Drop alt-loci rows when a HGNC ID maps to mixed genes.
+
+        Mirrors the legacy Perl cleanup for ``ensembl2hgnc_all`` where
+        alt-loci rows are removed when the same HGNC ID has both
+        Reference and Alt-loci mappings that are not the same gene.
+
+        Args:
+            rows: Raw staging dictionaries from the repository query.
+
+        Returns:
+            Filtered row list with conflicting alt-loci rows removed.
+        """
+        reference_genes: dict[str, set[str]] = {}
+        alt_loci_genes: dict[str, set[str]] = {}
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            hgnc_id = _to_text(row.get("e2ha_hgnc_id"))
+            if hgnc_id is None:
+                continue
+
+            ensembl_gene = _to_text(row.get("e2ha_ensembl_gene_id")) or ""
+            mapped = _to_text(row.get("e2ha_mapped")) or ""
+            if mapped == "Reference":
+                reference_genes.setdefault(hgnc_id, set()).add(ensembl_gene)
+            if mapped == "Alt-loci":
+                alt_loci_genes.setdefault(hgnc_id, set()).add(ensembl_gene)
+
+        conflicting_hgnc_ids = {
+            hgnc_id
+            for hgnc_id, ref_genes in reference_genes.items()
+            if hgnc_id in alt_loci_genes
+            and len(ref_genes.union(alt_loci_genes[hgnc_id])) > 1
+        }
+
+        filtered_rows: list[dict] = []
+        for row in rows:
+            hgnc_id = _to_text(row.get("e2ha_hgnc_id")) if isinstance(row, dict) else None
+            mapped = _to_text(row.get("e2ha_mapped")) if isinstance(row, dict) else None
+            if hgnc_id in conflicting_hgnc_ids and mapped == "Alt-loci":
+                continue
+            filtered_rows.append(row)
+        return filtered_rows
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return _normalize_rows(
@@ -691,13 +739,25 @@ class EnsemblSeqLoader(BaseXrefLoader):
 
         client = _ensure_client(self._fetch_client)
         parser = EnsemblSeqParser()
+        cdna_source = self._CDNA_URL.rsplit("/", maxsplit=1)[-1]
+        ncrna_source = self._NCRNA_URL.rsplit("/", maxsplit=1)[-1]
 
         cdna_data = client.fetch(self._CDNA_URL)
         ncrna_data = client.fetch(self._NCRNA_URL)
 
         cdna_records = parser.parse_cdna(cdna_data)
         ncrna_records = parser.parse_ncrna(ncrna_data)
-        return [record.to_staging_dict() for record in (cdna_records + ncrna_records)]
+
+        rows: list[dict[str, str | int]] = []
+        for record in cdna_records:
+            row = record.to_staging_dict()
+            row["eseq_source"] = cdna_source
+            rows.append(row)
+        for record in ncrna_records:
+            row = record.to_staging_dict()
+            row["eseq_source"] = ncrna_source
+            rows.append(row)
+        return rows
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return _normalize_rows(
@@ -884,24 +944,28 @@ class Ucsc2HgncLoader(BaseXrefLoader):
             text = data.decode("utf-8")
 
         rows: list[dict[str, str]] = []
+        seen_hgnc_ids: set[str] = set()
         for line in text.splitlines():
             cols = [c.strip() for c in line.split("\t")]
             if len(cols) < 2:
                 continue
 
             symbol = cols[0]
-            hgnc_id = cols[1]
+            hgnc_id = cols[1].replace("HGNC:", "")
             transcript = cols[2] if len(cols) > 2 else ""
 
             if not symbol or not hgnc_id:
                 continue
+
+            mapby = "M" if hgnc_id not in seen_hgnc_ids else "-"
+            seen_hgnc_ids.add(hgnc_id)
 
             rows.append(
                 {
                     "ucsc_hgnc_app_sym": symbol,
                     "ucsc_hgnc_id": hgnc_id,
                     "ucsc_hgnc_ucsc_id": transcript,
-                    "ucsc_mapby": "-",
+                    "ucsc_mapby": mapby,
                 }
             )
         return rows
@@ -955,6 +1019,11 @@ class ImgtLoader(BaseXrefLoader):
         records: list[dict[str, str]] = []
         for row in rows:
             cols = row.split(";")
+            if len(cols) == len(self._COLUMNS) + 1:
+                extra_column = cols[-1].strip()
+                if extra_column:
+                    raise ValueError("Data in extra IMGT column found")
+                cols = cols[:-1]
             if len(cols) < len(self._COLUMNS):
                 continue
             record: dict[str, str] = {}
