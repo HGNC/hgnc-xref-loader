@@ -135,10 +135,34 @@ class Gene2RefseqLoader(BaseXrefLoader):
 
 @register_source(XrefSource.REFSEQ_CATALOG)
 class RefseqCatalogLoader(BaseXrefLoader):
-    """Load NCBI RefSeq catalog cross-reference data."""
+    """Load NCBI RefSeq catalog cross-reference data.
+
+    Fetches the latest RefSeq release catalog from NCBI via HTTPS.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _BASE_URL = "https://ftp.ncbi.nlm.nih.gov/refseq/release/release-catalog/"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.refseq_catalog_parser import RefseqCatalogParser
+
+        client = _ensure_client(self._fetch_client)
+        url = self._resolve_catalog_url(client)
+        data = client.fetch(url)
+        records = RefseqCatalogParser().parse(data)
+        return [r.to_staging_dict() for r in records]
+
+    def _resolve_catalog_url(self, client: XrefFetchClient) -> str:
+        listing = client.fetch(self._BASE_URL)
+        import re
+
+        matches = re.findall(r"(RefSeq-release\d+\.catalog\.gz)", listing.decode("utf-8", errors="replace"))
+        if not matches:
+            return self._BASE_URL + "RefSeq-release1.catalog.gz"
+        return self._BASE_URL + sorted(matches)[-1]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -146,10 +170,24 @@ class RefseqCatalogLoader(BaseXrefLoader):
 
 @register_source(XrefSource.RNA_CENTRAL)
 class RnaCentralLoader(BaseXrefLoader):
-    """Load RNAcentral cross-reference data."""
+    """Load RNAcentral cross-reference data.
+
+    Fetches ``id_mapping.tsv.gz`` from EBI FTP.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ebi.ac.uk/pub/databases/RNAcentral/current_release/id_mapping/id_mapping.tsv.gz"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.rna_central_parser import RnaCentralParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = RnaCentralParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -157,10 +195,26 @@ class RnaCentralLoader(BaseXrefLoader):
 
 @register_source(XrefSource.NCBI2NAMELIST)
 class Ncbi2NamelistLoader(BaseXrefLoader):
-    """Load NCBI to_name cross-reference data."""
+    """Load NCBI to_name cross-reference data.
+
+    Reads the to_name file from NCBI. Requires credentials for the
+    private FTP server; in production these come from environment
+    variables.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_info.gz"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.ncbi2namelist_parser import Ncbi2NamelistParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = Ncbi2NamelistParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -168,10 +222,24 @@ class Ncbi2NamelistLoader(BaseXrefLoader):
 
 @register_source(XrefSource.CCDS_SEQ)
 class CcdsSeqLoader(BaseXrefLoader):
-    """Load CCDS sequence cross-reference data."""
+    """Load CCDS sequence cross-reference data.
+
+    Fetches CCDS FASTA sequence data from NCBI FTP.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ncbi.nlm.nih.gov/pub/CCDS/current_human/CCDS.current.txt"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.ccds_seq_parser import CcdsSeqParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = CcdsSeqParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -179,10 +247,24 @@ class CcdsSeqLoader(BaseXrefLoader):
 
 @register_source(XrefSource.GENCC)
 class GenCCLoader(BaseXrefLoader):
-    """Load GenCC cross-reference data."""
+    """Load GenCC cross-reference data.
+
+    Fetches submissions CSV from thegencc.org.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://search.thegencc.org/download/action/submissions-export-csv"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.gencc_parser import GenCCParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = GenCCParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -190,10 +272,24 @@ class GenCCLoader(BaseXrefLoader):
 
 @register_source(XrefSource.IUPHAR)
 class IupharLoader(BaseXrefLoader):
-    """Load IUPHAR/GtoP cross-reference data."""
+    """Load IUPHAR/GtoP cross-reference data.
+
+    Fetches HGNC mapping CSV from Guide to Pharmacology.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://www.guidetopharmacology.org/DATA/GtP_to_HGNC_mapping.csv"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.iuphar_parser import IupharParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = IupharParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -201,10 +297,24 @@ class IupharLoader(BaseXrefLoader):
 
 @register_source(XrefSource.MANE)
 class ManeLoader(BaseXrefLoader):
-    """Load NCBI MANE cross-reference data."""
+    """Load NCBI MANE cross-reference data.
+
+    Fetches MANE summary from NCBI FTP.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current/MANE.GRCh38.summary.txt.gz"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.mane_parser import ManeParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = ManeParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -212,10 +322,24 @@ class ManeLoader(BaseXrefLoader):
 
 @register_source(XrefSource.OMIM2GENE)
 class Omim2GeneLoader(BaseXrefLoader):
-    """Load OMIM mim2gene cross-reference data."""
+    """Load OMIM mim2gene cross-reference data.
+
+    Fetches mim2gene.txt from OMIM.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://www.omim.org/static/omim/data/mim2gene.txt"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.omim2gene_parser import Omim2GeneParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = Omim2GeneParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -223,10 +347,24 @@ class Omim2GeneLoader(BaseXrefLoader):
 
 @register_source(XrefSource.RGD_ORTHOLOGS)
 class RgdOrthologsLoader(BaseXrefLoader):
-    """Load RGD orthologs cross-reference data."""
+    """Load RGD orthologs cross-reference data.
+
+    Fetches RGD orthologs file from RGD.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://download.rgd.mcw.edu/pub/data_release/orthologs/RGD_ORTHOLOGS.txt"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.rgd_orthologs_parser import RgdOrthologsParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = RgdOrthologsParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -234,10 +372,24 @@ class RgdOrthologsLoader(BaseXrefLoader):
 
 @register_source(XrefSource.AGR)
 class AgrLoader(BaseXrefLoader):
-    """Load Alliance genome cross-reference data."""
+    """Load Alliance genome cross-reference data.
+
+    Fetches gene descriptions TSV from Alliance Genome.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "http://reports.alliancegenome.org/gene-descriptions/HUMAN_gene_desc_latest.tsv"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.agr_parser import AgrParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = AgrParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -245,10 +397,24 @@ class AgrLoader(BaseXrefLoader):
 
 @register_source(XrefSource.MGI)
 class MgiLoader(BaseXrefLoader):
-    """Load MGI homology cross-reference data."""
+    """Load MGI homology cross-reference data.
+
+    Fetches HGNC Alliance homology report from MGI.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "http://www.informatics.jax.org/downloads/reports/HGNC_AllianceHomology.rpt"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.mgi_parser import MgiParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = MgiParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -289,10 +455,24 @@ class EnsemblSeqLoader(BaseXrefLoader):
 
 @register_source(XrefSource.MIRNA_RAW)
 class MirnaRawLoader(BaseXrefLoader):
-    """Load miRBase miRNA cross-reference data."""
+    """Load miRBase miRNA cross-reference data.
+
+    Fetches human miRNA GFF3 from miRBase.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://www.mirbase.org/download/hsa.gff3"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.mirna_raw_parser import MirnaRawParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = MirnaRawParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -300,10 +480,24 @@ class MirnaRawLoader(BaseXrefLoader):
 
 @register_source(XrefSource.ALPHAFOLD)
 class AlphafoldLoader(BaseXrefLoader):
-    """Load Alphafold cross-reference data."""
+    """Load Alphafold cross-reference data.
+
+    Fetches accession ID mapping from EBI FTP.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "http://ftp.ebi.ac.uk/pub/databases/alphafold/accession_ids.csv"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.alphafold_parser import AlphafoldParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = AlphafoldParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
