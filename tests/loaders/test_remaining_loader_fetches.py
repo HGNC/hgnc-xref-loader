@@ -5,11 +5,13 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from hgnc_xref_loader.loaders.individual_loaders import (
+    CytobandLoader,
     Ensembl2HgncCompleteLoader,
     EnsemblGeneLoader,
     EnsemblSeqLoader,
     ImgtLoader,
     LovdLoader,
+    Ucsc2HgncLoader,
 )
 
 
@@ -93,3 +95,45 @@ def test_imgt_loader_parses_pre_block() -> None:
     assert len(rows) == 1
     assert rows[0]["im_hgnc_id"] == "5"
     assert rows[0]["im_uniprot"] == "P12345"
+
+
+def test_cytoband_loader_parses_ucsc_rows() -> None:
+    content = "chr1\t100\t200\tp36.33\tgneg\n"
+    import gzip
+
+    fetch_client = MagicMock()
+    fetch_client.fetch.return_value = gzip.compress(content.encode("utf-8"))
+
+    loader = CytobandLoader(fetch_client=fetch_client)
+    rows = loader.fetch_and_parse()
+
+    assert rows == [
+        {
+            "cb_source": "UCSC",
+            "cb_chr": "1",
+            "cb_start": 100,
+            "cb_end": 200,
+            "cb_band": "p36.33",
+            "cb_stain": "gneg",
+        }
+    ]
+
+
+def test_ucsc2hgnc_loader_parses_hgnc_xref_rows() -> None:
+    content = "A1BG\tHGNC:5\tuc001aaa.3\n"
+    import gzip
+
+    fetch_client = MagicMock()
+    fetch_client.fetch.return_value = gzip.compress(content.encode("utf-8"))
+
+    loader = Ucsc2HgncLoader(fetch_client=fetch_client)
+    rows = loader.fetch_and_parse()
+
+    assert rows == [
+        {
+            "ucsc_hgnc_app_sym": "A1BG",
+            "ucsc_hgnc_id": "HGNC:5",
+            "ucsc_hgnc_ucsc_id": "uc001aaa.3",
+            "ucsc_mapby": "-",
+        }
+    ]

@@ -552,8 +552,36 @@ class AlphafoldLoader(BaseXrefLoader):
 class CytobandLoader(BaseXrefLoader):
     """Load cytoband cross-reference data."""
 
+    _URL = "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz"
+
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        import gzip
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+
+        try:
+            text = gzip.decompress(data).decode("utf-8")
+        except Exception:
+            text = data.decode("utf-8")
+
+        rows: list[dict[str, str | int]] = []
+        for line in text.splitlines():
+            cols = line.split("\t")
+            if len(cols) < 5:
+                continue
+            chromosome = cols[0].replace("chr", "").strip()
+            rows.append(
+                {
+                    "cb_source": "UCSC",
+                    "cb_chr": chromosome,
+                    "cb_start": int(cols[1]),
+                    "cb_end": int(cols[2]),
+                    "cb_band": cols[3].strip(),
+                    "cb_stain": cols[4].strip(),
+                }
+            )
+        return rows
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -607,8 +635,41 @@ class LovdLoader(BaseXrefLoader):
 class Ucsc2HgncLoader(BaseXrefLoader):
     """Load UCSC-to-HGNC cross-reference data."""
 
+    _URL = "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/hgncXref.txt.gz"
+
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        import gzip
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+
+        try:
+            text = gzip.decompress(data).decode("utf-8")
+        except Exception:
+            text = data.decode("utf-8")
+
+        rows: list[dict[str, str]] = []
+        for line in text.splitlines():
+            cols = [c.strip() for c in line.split("\t")]
+            if len(cols) < 2:
+                continue
+
+            symbol = cols[0]
+            hgnc_id = cols[1]
+            transcript = cols[2] if len(cols) > 2 else ""
+
+            if not symbol or not hgnc_id:
+                continue
+
+            rows.append(
+                {
+                    "ucsc_hgnc_app_sym": symbol,
+                    "ucsc_hgnc_id": hgnc_id,
+                    "ucsc_hgnc_ucsc_id": transcript,
+                    "ucsc_mapby": "-",
+                }
+            )
+        return rows
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
