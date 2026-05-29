@@ -7,7 +7,7 @@ to HGNC gene identifiers.
 from __future__ import annotations
 
 from hgnc_xref_loader.domain.models import XrefRecord
-from hgnc_xref_loader.fetch.client import XrefFetchClient
+from hgnc_xref_loader.fetch.client import DefaultXrefFetchClient, XrefFetchClient
 from hgnc_xref_loader.loaders.base import BaseXrefLoader
 from hgnc_xref_loader.loaders.registry import register_source
 from hgnc_xref_loader.repositories.xref_staging_repository import XrefStagingRepository
@@ -30,9 +30,20 @@ class UniprotXrefLoader(BaseXrefLoader):
         staging_repo: XrefStagingRepository | None = None,
     ) -> None:
         super().__init__(fetch_client=fetch_client, staging_repo=staging_repo)
+        self._url = (
+            "https://rest.uniprot.org/uniprotkb/stream"
+            "?fields=accession,reviewed,entry_name,protein_names,gene_primary,"
+            "xref_hgnc,ec,xref_geneid"
+            "&format=tsv&query=(organism_id:9606)"
+        )
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.uniprot_parser import UniprotTsvParser
+
+        client = self._fetch_client or DefaultXrefFetchClient()
+        data = client.fetch(self._url)
+        parsed = UniprotTsvParser().parse(data)
+        return [row.to_dict() for row in parsed.main_rows]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         records: list[XrefRecord] = []

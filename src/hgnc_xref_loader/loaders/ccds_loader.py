@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Callable
 
 from hgnc_xref_loader.domain.models import XrefRecord
-from hgnc_xref_loader.fetch.client import XrefFetchClient
+from hgnc_xref_loader.fetch.client import DefaultXrefFetchClient, XrefFetchClient
 from hgnc_xref_loader.loaders.base import BaseXrefLoader
 from hgnc_xref_loader.loaders.registry import register_source
 from hgnc_xref_loader.repositories.xref_staging_repository import XrefStagingRepository
@@ -39,6 +39,7 @@ class CcdsXrefLoader(BaseXrefLoader):
     ) -> None:
         super().__init__(fetch_client=fetch_client, staging_repo=staging_repo)
         self._post_load_hook = post_load_hook
+        self._url = "https://ftp.ncbi.nlm.nih.gov/pub/CCDS/current_human/CCDS.current.txt"
 
     def run(self) -> int:
         """Execute the loader lifecycle then invoke the post-load hook.
@@ -52,7 +53,12 @@ class CcdsXrefLoader(BaseXrefLoader):
         return count
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.ccds_parser import CcdsTsvParser
+
+        client = self._fetch_client or DefaultXrefFetchClient()
+        data = client.fetch(self._url)
+        records = CcdsTsvParser().parse_bytes(data)
+        return [record.to_staging_dict() for record in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         records: list[XrefRecord] = []
