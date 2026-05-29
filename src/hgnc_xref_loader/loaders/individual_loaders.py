@@ -425,7 +425,21 @@ class Ensembl2HgncCompleteLoader(BaseXrefLoader):
     """Load complete Ensembl-to-HGNC cross-reference data."""
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        import contextlib
+
+        from ensembl_orm.session import get_session
+
+        from hgnc_xref_loader.repositories.ensembl2hgnc_complete_repository import (
+            Ensembl2HgncCompleteRepository,
+        )
+
+        def session_factory() -> contextlib.AbstractContextManager:
+            return contextlib.nullcontext(get_session())
+
+        repository = Ensembl2HgncCompleteRepository(
+            ensembl_session_factory=session_factory
+        )
+        return repository.fetch_all_mappings()
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -436,7 +450,19 @@ class EnsemblGeneLoader(BaseXrefLoader):
     """Load Ensembl gene cross-reference data."""
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        import contextlib
+
+        from ensembl_orm.session import get_session
+
+        from hgnc_xref_loader.repositories.ensembl_gene_repository import (
+            EnsemblGeneRepository,
+        )
+
+        def session_factory() -> contextlib.AbstractContextManager:
+            return contextlib.nullcontext(get_session())
+
+        repository = EnsemblGeneRepository(ensembl_session_factory=session_factory)
+        return repository.fetch_genes()
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -446,8 +472,27 @@ class EnsemblGeneLoader(BaseXrefLoader):
 class EnsemblSeqLoader(BaseXrefLoader):
     """Load Ensembl sequence cross-reference data."""
 
+    _CDNA_URL = (
+        "https://ftp.ensembl.org/pub/current_fasta/homo_sapiens/cdna/"
+        "Homo_sapiens.GRCh38.cdna.all.fa.gz"
+    )
+    _NCRNA_URL = (
+        "https://ftp.ensembl.org/pub/current_fasta/homo_sapiens/ncrna/"
+        "Homo_sapiens.GRCh38.ncrna.fa.gz"
+    )
+
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.ensembl_seq_parser import EnsemblSeqParser
+
+        client = _ensure_client(self._fetch_client)
+        parser = EnsemblSeqParser()
+
+        cdna_data = client.fetch(self._CDNA_URL)
+        ncrna_data = client.fetch(self._NCRNA_URL)
+
+        cdna_records = parser.parse_cdna(cdna_data)
+        ncrna_records = parser.parse_ncrna(ncrna_data)
+        return [record.to_staging_dict() for record in (cdna_records + ncrna_records)]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -518,8 +563,41 @@ class CytobandLoader(BaseXrefLoader):
 class LovdLoader(BaseXrefLoader):
     """Load LOVD cross-reference data."""
 
+    _URL = "http://www.lovd.nl/2.0/index_list.php?export=txt"
+
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        text = data.decode("utf-8")
+
+        records: list[dict[str, str]] = []
+        lines = text.splitlines()
+        if lines:
+            lines = lines[1:]
+
+        for line in lines:
+            cols = line.replace('"', "").split("\t")
+            if len(cols) < 9:
+                continue
+            db_name = cols[6].strip()
+            db_url = cols[7].strip()
+            genes = cols[8].strip()
+            if not genes:
+                continue
+            for symbol in [s.strip() for s in genes.split(",") if s.strip()]:
+                name = (
+                    f"{db_name} ({symbol})"
+                    if symbol in {"NF1_germline", "NF1_somatic"}
+                    else db_name
+                )
+                records.append(
+                    {
+                        "lovd_db_name": name,
+                        "lovd_db_url": db_url,
+                        "lovd_db_genes": symbol,
+                    }
+                )
+        return records
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -540,8 +618,48 @@ class Ucsc2HgncLoader(BaseXrefLoader):
 class ImgtLoader(BaseXrefLoader):
     """Load IMGT/GENE-DB cross-reference data."""
 
+    _URL = "https://www.imgt.org/genedb/GENElect?query=4.5+&species=Homo+sapiens"
+    _COLUMNS = [
+        "im_species",
+        "im_gene_id",
+        "im_gene_function",
+        "im_gene_name",
+        "im_alleles",
+        "im_chrom",
+        "im_ref_acc",
+        "im_hgnc_app_sym",
+        "im_hgnc_id",
+        "im_eg_id",
+        "im_vega",
+        "im_geneatlas",
+        "im_genecards",
+        "im_uniprot",
+    ]
+
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        text = data.decode("utf-8")
+
+        in_pre = "<pre>" in text and "</pre>" in text
+        if in_pre:
+            text = text.split("<pre>", 1)[1].split("</pre>", 1)[0]
+
+        rows = [line.strip() for line in text.replace("\r", "").splitlines() if line.strip()]
+        if rows:
+            rows = rows[1:]
+
+        records: list[dict[str, str]] = []
+        for row in rows:
+            cols = row.split(";")
+            if len(cols) < len(self._COLUMNS):
+                continue
+            record: dict[str, str] = {}
+            for index, column_name in enumerate(self._COLUMNS):
+                value = cols[index].strip()
+                record[column_name] = "" if value == "-" else value
+            records.append(record)
+        return records
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
