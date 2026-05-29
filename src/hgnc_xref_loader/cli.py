@@ -54,8 +54,28 @@ def main(argv: list[str] | None = None) -> int:
 
     logger = logging.getLogger("hgnc_xref_loader")
 
+    ccds_post_load = None
+    if source == XrefSource.CCDS:
+        from hgnc_xref_loader.repositories import wiring as _wiring
+        from hgnc_xref_loader.repositories.session_factory import (
+            create_genew4_engine as _create_engine,
+            create_session_factory as _create_session_factory,
+        )
+
+        _engine = _create_engine(settings.genew4)
+        _session = _create_session_factory(_engine)()
+
+        ccds_post_load = _wiring.build_ccds_post_load_service(
+            settings=settings,
+            session=_session,
+        )
+
     try:
-        service = XrefLoadService(source=source, logger=logger)
+        service = XrefLoadService(
+            source=source,
+            logger=logger,
+            ccds_post_load_service=ccds_post_load,
+        )
         service.run()
     except ConfigError:
         return 2

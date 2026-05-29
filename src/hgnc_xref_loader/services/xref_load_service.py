@@ -32,9 +32,15 @@ class XrefLoadService:
     method. Emits structured log events and measures per-run metrics
     including record count and elapsed duration.
 
+    For CCDS, automatically wires a CcdsPostLoadService as a post-load
+    hook that runs after the standard fetch-normalize lifecycle.
+
     Args:
         source: The XrefSource enum value identifying which loader to run.
         logger: Logger instance for emitting structured events.
+        staging_repository: Optional staging repository for persistence.
+        ccds_post_load_service: Optional CCDS post-load service, wired
+            as a hook when the source is ``ccds``.
 
     Raises:
         UnknownSourceError: When no loader is registered for the source.
@@ -46,10 +52,12 @@ class XrefLoadService:
         source: XrefSource,
         logger: logging.Logger,
         staging_repository: XrefStagingRepository | None = None,
+        ccds_post_load_service: object | None = None,
     ) -> None:
         self.source = source
         self._logger = logger
         self._staging_repository = staging_repository
+        self._ccds_post_load_service = ccds_post_load_service
 
     def run(self) -> int:
         """Resolve and execute the loader for the configured source.
@@ -62,7 +70,17 @@ class XrefLoadService:
             LoaderRuntimeError: If the loader raises during execution.
         """
         loader_cls = get_loader(self.source)
-        loader = loader_cls()
+
+        kwargs: dict = {}
+        if self._staging_repository is not None:
+            kwargs["staging_repo"] = self._staging_repository
+        if (
+            self.source == XrefSource.CCDS
+            and self._ccds_post_load_service is not None
+        ):
+            kwargs["post_load_hook"] = self._ccds_post_load_service.add_hgnc_ids
+
+        loader = loader_cls(**kwargs)
 
         self._logger.info(
             "loader_start",

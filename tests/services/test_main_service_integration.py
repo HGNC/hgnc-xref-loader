@@ -50,7 +50,8 @@ class TestMainServiceIntegrationEndToEnd:
         assert result.status == LoadStatus.SUCCESS
         assert result.source == "uniprot"
         mock_cls.assert_called_once_with(
-            source=XrefSource.UNIPROT, logger=service._logger
+            source=XrefSource.UNIPROT, logger=service._logger,
+            ccds_post_load_service=None,
         )
 
     def test_single_source_ccds_invokes_loader(self) -> None:
@@ -70,7 +71,8 @@ class TestMainServiceIntegrationEndToEnd:
         assert result.record_count == 99
         assert result.source == "ccds"
         mock_cls.assert_called_once_with(
-            source=XrefSource.CCDS, logger=service._logger
+            source=XrefSource.CCDS, logger=service._logger,
+            ccds_post_load_service=None,
         )
 
     def test_unknown_source_returns_failed(self) -> None:

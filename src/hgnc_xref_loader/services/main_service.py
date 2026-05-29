@@ -81,10 +81,12 @@ class MainService(Service):
         self,
         settings: "Settings",
         version_tracker: "VersionTracker | None" = None,
+        ccds_post_load_service: object | None = None,
     ) -> None:
         self._settings = settings
         self._logger = logging.getLogger("hgnc_xref_loader")
         self._version_tracker = version_tracker
+        self._ccds_post_load_service = ccds_post_load_service
 
     @classmethod
     def from_settings(cls, settings: "Settings") -> "MainService":
@@ -164,6 +166,9 @@ class MainService(Service):
             service = XrefLoadService(
                 source=source,
                 logger=self._logger,
+                ccds_post_load_service=self._ccds_post_load_service
+                if source == XrefSource.CCDS
+                else None,
             )
             record_count = service.run()
         except Exception as exc:

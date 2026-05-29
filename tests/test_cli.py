@@ -54,12 +54,22 @@ class TestMainSuccess:
     def test_main_resolves_source_from_settings(self):
         mock_settings = MagicMock()
         mock_settings.runtime.xref_source = "ccds"
+        mock_session = MagicMock()
+        mock_post_load = MagicMock()
         with patch("hgnc_xref_loader.cli.configure_logging"), \
              patch("hgnc_xref_loader.cli.Settings", return_value=mock_settings), \
+             patch(
+                 "hgnc_xref_loader.repositories.session_factory.create_engine"
+             ) as mock_engine, \
+             patch(
+                 "hgnc_xref_loader.repositories.wiring.build_ccds_post_load_service",
+                 return_value=mock_post_load,
+             ), \
              patch("hgnc_xref_loader.cli.XrefLoadService") as mock_svc_cls:
             main([])
-        call_kwargs = mock_svc_cls.call_args
-        assert call_kwargs[1]["source"].value == "ccds"
+        call_kwargs = mock_svc_cls.call_args.kwargs
+        assert call_kwargs["source"].value == "ccds"
+        assert call_kwargs["ccds_post_load_service"] is mock_post_load
 
 
 class TestMainConfigError:
