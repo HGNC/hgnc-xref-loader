@@ -1,18 +1,15 @@
 """Individual xref source adapters replacing scaffold stubs.
 
 Each adapter is a thin ``BaseXrefLoader`` subclass registered with the
-loader registry. The ``run()`` method delegates to the corresponding
-concrete service class which handles the full fetch/parse/stage/promote
-lifecycle.
-
-The ``fetch_and_parse()`` and ``normalize()`` methods from the base class
-template are not used — ``run()`` is overridden entirely.
+loader registry. Loaders fetch data from external URLs via
+``XrefFetchClient``, parse it with the corresponding parser, and return
+staging dicts ready for persistence.
 """
 
 from __future__ import annotations
 
 from hgnc_xref_loader.domain.models import XrefRecord
-from hgnc_xref_loader.fetch.client import XrefFetchClient
+from hgnc_xref_loader.fetch.client import DefaultXrefFetchClient, XrefFetchClient
 from hgnc_xref_loader.loaders.base import BaseXrefLoader
 from hgnc_xref_loader.loaders.registry import register_source, XrefSource
 from hgnc_xref_loader.repositories.xref_staging_repository import (
@@ -20,12 +17,39 @@ from hgnc_xref_loader.repositories.xref_staging_repository import (
 )
 
 
+def _ensure_client(client: XrefFetchClient | None) -> XrefFetchClient:
+    """Return the provided client or create a default one.
+
+    Args:
+        client: An optional fetch client.
+
+    Returns:
+        A usable XrefFetchClient instance.
+    """
+    return client or DefaultXrefFetchClient()
+
+
 @register_source(XrefSource.GENE_INFO)
 class GeneInfoLoader(BaseXrefLoader):
-    """Load NCBI gene_info cross-reference data."""
+    """Load NCBI gene_info cross-reference data.
+
+    Fetches ``gene_info.gz`` from NCBI FTP and parses it using
+    ``GeneInfoParser``.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_info.gz"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.gene_info_parser import GeneInfoParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = GeneInfoParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -33,10 +57,25 @@ class GeneInfoLoader(BaseXrefLoader):
 
 @register_source(XrefSource.GENE_HISTORY)
 class GeneHistoryLoader(BaseXrefLoader):
-    """Load NCBI gene_history cross-reference data."""
+    """Load NCBI gene_history cross-reference data.
+
+    Fetches ``gene_history.gz`` from NCBI FTP and parses it using
+    ``GeneHistoryParser``.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_history.gz"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.gene_history_parser import GeneHistoryParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = GeneHistoryParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -44,10 +83,25 @@ class GeneHistoryLoader(BaseXrefLoader):
 
 @register_source(XrefSource.GENE2ACCESSION)
 class Gene2AccessionLoader(BaseXrefLoader):
-    """Load NCBI gene2accession cross-reference data."""
+    """Load NCBI gene2accession cross-reference data.
+
+    Fetches ``gene2accession.gz`` from NCBI FTP and parses it using
+    ``Gene2AccessionParser``.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2accession/gene2accession.gz"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.gene2accession_parser import Gene2AccessionParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = Gene2AccessionParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
@@ -55,10 +109,25 @@ class Gene2AccessionLoader(BaseXrefLoader):
 
 @register_source(XrefSource.GENE2REFSEQ)
 class Gene2RefseqLoader(BaseXrefLoader):
-    """Load NCBI gene2refseq cross-reference data."""
+    """Load NCBI gene2refseq cross-reference data.
+
+    Fetches ``gene2refseq.gz`` from NCBI FTP and parses it using
+    ``Gene2RefseqParser``.
+
+    Args:
+        fetch_client: Optional fetch client for retrieving source data.
+        staging_repo: Optional staging repository for persistence.
+    """
+
+    _URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2refseq/gene2refseq.gz"
 
     def fetch_and_parse(self) -> list[dict]:
-        return []
+        from hgnc_xref_loader.loaders.gene2refseq_parser import Gene2RefseqParser
+
+        client = _ensure_client(self._fetch_client)
+        data = client.fetch(self._URL)
+        records = Gene2RefseqParser().parse(data)
+        return [r.to_staging_dict() for r in records]
 
     def normalize(self, raw: list[dict]) -> list[XrefRecord]:
         return []
